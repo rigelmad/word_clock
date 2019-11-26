@@ -42,9 +42,7 @@
 
 //------Define/Includes----------
 
-#define UNCOMMENT_IF_IT_IS_DST 1
 //#define DEBUG 1
-//#define RESET_TIME 1 //Comment out to negate, whenever you upload with this on make sure to reupload with it off so as to make sure it doesnt do this on every startup
 
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_NeoMatrix.h>
@@ -125,7 +123,6 @@ unsigned long firstTime; // how long since the button was first pressed
 
 bool beenHeld = 0;
 bool beenHeldLong = 0;
-int lastDSTAdjust;
 
 
 //For Latch (Brightness) State
@@ -255,22 +252,6 @@ void setup() {
 
   rtc.begin(); //start the time module
 
-#ifdef RESET_TIME
-  //Subtract for adjusting of DST
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)) + TimeSpan(0, 0, 1, 7)); //Resets to time of compilation w/ 6s adjust for upload time
-#endif
-
-  if (rtc.lostPower()) { //If RTC loses power, flash red lights 5 times, then adjust time
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)) + TimeSpan(0, 0, 0, 7)); //Potential problem bc 5 seconds after runtime?
-    for (int i = 0; i < 5; i++) {
-      matrix.fillScreen(matrix.Color(255, 0, 0));
-      delay(1000);
-      matrix.fillScreen(0);
-      delay(1000);
-    }
-
-  }
-
   pinMode(BUTTON, INPUT_PULLUP);
   pinMode(LATCH_BUTTON, INPUT_PULLUP);
 
@@ -278,12 +259,6 @@ void setup() {
   //  lastLatchState = !digitalRead(LATCH_BUTTON); //Should induce a checking of the latch pin on startup
   updateTime();
   seed = (theMinute % 5) * 60 + theSecond;
-
-  lastDSTAdjust = BACK; //For DST
-
-#ifdef UNCOMMENT_IF_IT_IS_DST //If it is currently DST, the next press of the button should make the time go backwards
-  lastDSTAdjust = FWD;
-#endif
 
 }
 
