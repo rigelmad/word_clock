@@ -1,4 +1,9 @@
 /*
+   VERSION 5
+    - Changed DST to be controlled by latching buton
+    - Changed the brightness to be triggered by a single press of the momentary switch
+    - Secret word now blinks on an interval
+    
    VERSION 4
     - Removed checking birthdays, waiting on a better implementation of this
     - Fixed "noon oclock" and "midnight oclock"
@@ -38,8 +43,8 @@
 //------Define/Includes----------
 
 #define UNCOMMENT_IF_IT_IS_DST 1
-#define DEBUG 1
-//#define RESET_TIME 1 //Comment out to negate
+//#define DEBUG 1
+//#define RESET_TIME 1 //Comment out to negate, whenever you upload with this on make sure to reupload with it off so as to make sure it doesnt do this on every startup
 
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_NeoMatrix.h>
@@ -84,12 +89,13 @@ uint8_t theDay;
 uint8_t theHour;
 uint8_t theMinute;
 uint8_t theSecond;
+uint8_t dst_add; //How much to add for DST
 
 
 //For Brightness
 double DAY = 1;
 double NIGHT = 0.5;
-double brightness_mode;
+double brightness_mode = DAY;
 
 //Global var color
 uint16_t color;
@@ -124,6 +130,8 @@ int lastDSTAdjust;
 
 //For Latch (Brightness) State
 int lastLatchState; //For the changing of the DST BUTTON
+unsigned long lastSecretSwitch = 0;
+float HEART_BEAT_HZ = 1.5;
 
 //For Blinking Cursor
 unsigned long lastBlink = 0;
@@ -248,7 +256,8 @@ void setup() {
   rtc.begin(); //start the time module
 
 #ifdef RESET_TIME
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)) + TimeSpan(0, 0, 0, 7)); //Resets to time of compilation w/ 6s adjust for upload time
+  //Subtract for adjusting of DST
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)) + TimeSpan(0, 0, 1, 7)); //Resets to time of compilation w/ 6s adjust for upload time
 #endif
 
   if (rtc.lostPower()) { //If RTC loses power, flash red lights 5 times, then adjust time
@@ -266,8 +275,7 @@ void setup() {
   pinMode(LATCH_BUTTON, INPUT_PULLUP);
 
   mode = STARTUP; //Initialize mode to word mode
-  lastLatchState = !digitalRead(LATCH_BUTTON); //Should induce a checking of the latch pin on startup
-
+  //  lastLatchState = !digitalRead(LATCH_BUTTON); //Should induce a checking of the latch pin on startup
   updateTime();
   seed = (theMinute % 5) * 60 + theSecond;
 
@@ -284,7 +292,7 @@ void loop() {
   updateTime(); //Update the time and timing container (hour, min, sec) every clock cycle
   updateSeed();
   readButtonPush(); //Read the Mode button push
-  checkLatch();
+  dst_add = !digitalRead(LATCH_BUTTON);
 
   switch (mode) {
     case WORD_MODE: //Word mode
@@ -323,7 +331,7 @@ void updateTime() {
   theDay = theTime.day();
 
   //Find the time
-  theHour = theTime.hour();
+  theHour = (theTime.hour() + dst_add) % 24;
   theMinute = theTime.minute();
   theSecond = theTime.second();
 
@@ -353,56 +361,43 @@ void readButtonPush() {
   if (millis_held > 50) {
 
     if (current == HIGH && previous == LOW) { // If the button has been released
-
       if (millis_held < 1000) { //Regular, one-press, less than a second
-        switch (mode) {
-          case WORD_MODE:
-            mode = BIG_DIGIT_MODE;
-            break;
-          case BIG_DIGIT_MODE:
-          case SECRET_WORD_MODE:
-          case BIRTHDAY_MODE:
-            mode = WORD_MODE;
-            break;
-        }
-
-        Serial.println();
-        Serial.print("------------MODE CHANGE, New Mode: ");
-        Serial.print(mode);
-        Serial.print("--------------");
-        Serial.println();
-
+        toggleDayNight();
       }
     }
 
     if (millis_held >= 1000 && current == LOW && !beenHeld) { //This is outside bc I dont want to have to release the button for it to ha[en
-      mode = SECRET_WORD_MODE;
       beenHeld = 1;
+
+      switch (mode) {
+        case WORD_MODE:
+          mode = BIG_DIGIT_MODE;
+          break;
+        case BIG_DIGIT_MODE:
+        case SECRET_WORD_MODE:
+        case BIRTHDAY_MODE:
+          mode = WORD_MODE;
+          break;
+      }
 
       Serial.println();
       Serial.print("------------MODE CHANGE, New Mode: ");
       Serial.print(mode);
       Serial.print("--------------");
       Serial.println();
+      // Change the brightness
 
     }
 
     if (millis_held >= 3000 && current == LOW & !beenHeldLong) {
       beenHeldLong = 1;
+      mode = SECRET_WORD_MODE;
 
-      if (lastDSTAdjust == FWD) { //If the last time DST was asjusted was Forward, change time back
-
-        lastDSTAdjust = BACK;
-        DateTime hourBehind = (rtc.now() - TimeSpan(0, 1, 0, 0));
-        rtc.adjust(hourBehind);
-
-      } else if (lastDSTAdjust == BACK) {
-
-        lastDSTAdjust = FWD;
-        DateTime hourAhead = (rtc.now() + TimeSpan(0, 1, 0, 0));
-        rtc.adjust(hourAhead);
-
-      }
+      Serial.println();
+      Serial.print("------------MODE CHANGE, New Mode: ");
+      Serial.print(mode);
+      Serial.print("--------------");
+      Serial.println();
     }
   }
 
@@ -417,19 +412,6 @@ void readButtonPush() {
   previous = current;
 }
 
-void checkLatch() {
-  int currentLatchState = digitalRead(LATCH_BUTTON);
-
-  if (currentLatchState != lastLatchState) { //If the button has changed positions
-    if (currentLatchState == LOW) brightness_mode = DAY;
-    if (currentLatchState == HIGH) brightness_mode = NIGHT;
-
-    setColor();
-
-    lastLatchState = currentLatchState; //Update the last state of the button
-  }
-}
-
 void checkBirthday() { //Sets a boolean if there is a birthday occuring, then changes mode if birthday
   for (int i = 0; i < NUM_BIRTHDAYS; i++) {
     if (BIRTH_MONTH[i] == theMonth) {
@@ -442,6 +424,12 @@ void checkBirthday() { //Sets a boolean if there is a birthday occuring, then ch
   if (isBirthday) {
     mode = BIRTHDAY_MODE;
   }
+}
+
+void toggleDayNight() {
+  if (brightness_mode == NIGHT) brightness_mode = DAY;
+  else brightness_mode = NIGHT;
+  setColor();
 }
 
 // ----- STATE FUNCTIONS ---- The Display Modes
@@ -534,16 +522,39 @@ void displayBigDigits() {
 
 }
 
+float brightness = NIGHT;
+bool secretFadeUp = true;
+float SECRET_BLINK_INT = 50.0;
 void displaySecretWord() {
   int i, j;
+
+  if (millis() - lastSecretSwitch > ((int) SECRET_BLINK_INT)) {
+    lastSecretSwitch = millis();
+
+    if (secretFadeUp) {
+      brightness += (DAY - NIGHT) / (1000.0 / SECRET_BLINK_INT);
+    } else {
+      brightness -= (DAY - NIGHT) / (1000.0 / SECRET_BLINK_INT);
+    }
+
+    if (brightness >= DAY) {
+      secretFadeUp = false;
+      brightness = DAY;
+    } else if (brightness <= NIGHT) {
+      secretFadeUp = true;
+      brightness = NIGHT;
+    }
+  }
 
   for (i = 0; i < 11; i++) {
     for (j = 0; j < 11; j++) {
       if (OBJECTS[0][i][j]) { //Hardcoded for the first object, as there is only 1
-        matrix.drawPixel(j, i, OBJECT_COLOR);
+        matrix.drawPixel(j, i, fC(255 * brightness, 0.0 , 0.0));
       }
     }
   }
+
+
 
 }
 
@@ -609,11 +620,11 @@ void runStartup(const int speed) { //Blocking function
             matrix.drawPixel(10, i, trailColors[1]);
             matrix.drawPixel(9, i, trailColors[1]);
             break;
-          case 2: 
+          case 2:
             matrix.drawPixel(0, i, trailColors[1]);
             matrix.drawPixel(1, i, trailColors[2]);
             break;
-          case 1: 
+          case 1:
             matrix.drawPixel(0, i, trailColors[2]);
             break;
           case 0: //FIX ME
