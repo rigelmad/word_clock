@@ -2,7 +2,8 @@
 
 <img src="media/full_clock.jpg"
      alt="Markdown Monster icon"
-     style="float: center; margin-right: 10px;" />
+     style="float: center; margin-right: 10px;"
+     width="500" height="500" />
 
 ## Intro
 
@@ -17,7 +18,10 @@ The face was designed first in Excel to properly organize the letters into words
 
 Inside the frame, there are slats made of MDF that I cut to ensure that color doesn't bleed through to neighboring letters. Ideally, these should have been routed, but I didn't have access to one so I improvised :D
 
-![](media/intestines.jpg)
+<img src="media/intestines.jpg"
+     alt="Markdown Monster icon"
+     style="float: center; margin-right: 10px;"
+     width="500" height="500" />
 
 The entire frame rests on a 1/4" MDF, making it all nice and heavy. Definitely a point to improve on next time.
 
@@ -25,7 +29,10 @@ The entire frame rests on a 1/4" MDF, making it all nice and heavy. Definitely a
 
 Given my very basic knowledge of electrical components at the time that I was making this, the component selection was made with ease of implementation in mind. The backlights I chose were addressable Adafruit Neopixels, and an I2C-enabled RTC module for timekeeping. Two buttons (one latching and one momentary) were also included, and all peripherals were tied together with an Adafruit Pro Trinket.
 
-![](media/cabling.jpg)
+<img src="media/cabling.jpg"
+     alt="Markdown Monster icon"
+     style="float: center; margin-right: 10px;"
+     width="500" height="500" />
 
 ### Code
 
