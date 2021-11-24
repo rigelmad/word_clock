@@ -146,9 +146,9 @@ bool isBirthday = 0; //Flash the happy birthday when in birthday mode (will be t
 uint8_t digitPrevSecond = 0; //For the flashing of the big digits
 
 //For Birthdays and holidays
-#define NUM_BIRTHDAYS 6
-uint8_t BIRTH_MONTH[NUM_BIRTHDAYS]  = { 8,  4,  1,  1,  6,  6 };
-uint8_t BIRTH_DAY[NUM_BIRTHDAYS]    = { 12, 22, 17, 22, 6,  8 };
+#define NUM_BIRTHDAYS 7
+uint8_t BIRTH_MONTH[NUM_BIRTHDAYS]  = { 8,  4,  1,  1,  6,  6,  9 };
+uint8_t BIRTH_DAY[NUM_BIRTHDAYS]    = { 12, 22, 17, 22, 6,  8,  23 };
 //For holidays, currently only Valentines Day
 #define NUM_SPECIAL_DATES 1
 uint8_t SPECIAL_DATE_MONTHS[NUM_SPECIAL_DATES]  = { 2 };
