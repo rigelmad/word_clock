@@ -1,4 +1,9 @@
 /*
+   VERSION 6
+    - Fixed the birthday feature. Now on all preprogrammed birthdays, the clock will now display 
+      "Happy Birthday" until the mode is manually changed.
+    - Also added the option to add other special dates, but currently the only programmed holiday is Valentines Day. Open to others?
+   
    VERSION 5
     - Changed DST to be controlled by latching buton
     - Changed the brightness to be triggered by a single press of the momentary switch
@@ -63,8 +68,6 @@
 #define BIRTHDAY_MODE 2
 #define SECRET_WORD_MODE 3
 #define STARTUP 4
-
-#define NUM_BIRTHDAYS 2
 
 #define FWD 1
 #define BACK 0
@@ -142,9 +145,16 @@ uint8_t prevSecond = 0; //Tracker for the color fade, to increment each second
 bool isBirthday = 0; //Flash the happy birthday when in birthday mode (will be true for entirety of brithday)
 uint8_t digitPrevSecond = 0; //For the flashing of the big digits
 
-//For Birthdays
-uint8_t BIRTH_MONTH[NUM_BIRTHDAYS] = {8, 10};
-uint8_t BIRTH_DAY[NUM_BIRTHDAYS] =   {12, 7};
+//For Birthdays and holidays
+#define NUM_BIRTHDAYS 6
+uint8_t BIRTH_MONTH[NUM_BIRTHDAYS]  = { 8,  4,  1,  1,  6,  6 };
+uint8_t BIRTH_DAY[NUM_BIRTHDAYS]    = { 12, 22, 17, 22, 6,  8 };
+//For holidays, currently only Valentines Day
+#define NUM_SPECIAL_DATES 1
+uint8_t SPECIAL_DATE_MONTHS[NUM_SPECIAL_DATES]  = { 2 };
+uint8_t SPECIAL_DATE_DAYS[NUM_SPECIAL_DATES]    = { 14 };
+bool modeChangedToday = false;
+uint8_t specialDateSelector = 0;
 
 //For Master Mode
 int mode;
@@ -266,6 +276,7 @@ void loop() {
   matrix.clear();
   updateTime(); //Update the time and timing container (hour, min, sec) every clock cycle
   updateSeed();
+
   readButtonPush(); //Read the Mode button push
   dst_add = !digitalRead(LATCH_BUTTON);
 
@@ -292,6 +303,10 @@ void loop() {
       break;
   }
 
+  // Continuously check if today is a birthday, and change the mode if so
+  // This needs to be after the switch so that startup runs. This should be fixed.
+  checkSpecialDatesAndChangeModeOnce();
+
   matrix.show();
 
 }
@@ -299,6 +314,9 @@ void loop() {
 // ----- AUXILIARY FUNCTIONS FROM VOID LOOP() ----
 void updateTime() {
   theTime = rtc.now(); //Gather current time information
+
+  // Keep track of the previous day to know if we've changed days
+  uint8_t prevDay = theDay;
 
   // Find the date
   theYear = theTime.year();
@@ -317,9 +335,20 @@ void updateTime() {
   Serial.print(theSecond);
   Serial.println();
 
-  //  if (theHour == theMinute == theSecond == 0) { //Every new day check for a birthday
-  //    checkBirthday();
-  //  }
+  if (prevDay != theDay) { // Every new day, reset things that are supposed to reset every day
+    resetDay();
+  }
+}
+
+/**
+ * Resets all variables that should be reset at the end of each day 
+ */
+void resetDay() {
+  modeChangedToday = false;
+  specialDateSelector = 0;
+  if (mode == BIRTHDAY_MODE) {
+    mode = WORD_MODE;
+  }
 }
 
 void readButtonPush() {
@@ -343,6 +372,7 @@ void readButtonPush() {
 
     if (millis_held >= 1000 && current == LOW && !beenHeld) { //This is outside bc I dont want to have to release the button for it to ha[en
       beenHeld = 1;
+      modeChangedToday = true;
 
       switch (mode) {
         case WORD_MODE:
@@ -366,7 +396,14 @@ void readButtonPush() {
 
     if (millis_held >= 3000 && current == LOW & !beenHeldLong) {
       beenHeldLong = 1;
-      mode = SECRET_WORD_MODE;
+      modeChangedToday = true;
+
+      // If today is a birthday, go into birthday mode, else go into secret word mode
+      if (isTodayABirthday()) {
+        mode = BIRTHDAY_MODE;
+      } else {
+        mode = SECRET_WORD_MODE;
+      }
 
       Serial.println();
       Serial.print("------------MODE CHANGE, New Mode: ");
@@ -385,20 +422,6 @@ void readButtonPush() {
   }
 
   previous = current;
-}
-
-void checkBirthday() { //Sets a boolean if there is a birthday occuring, then changes mode if birthday
-  for (int i = 0; i < NUM_BIRTHDAYS; i++) {
-    if (BIRTH_MONTH[i] == theMonth) {
-      if (BIRTH_DAY[i] == theDay) {
-        isBirthday = 1;
-      } else isBirthday = 0;
-    } else isBirthday = 0;
-  }
-
-  if (isBirthday) {
-    mode = BIRTHDAY_MODE;
-  }
 }
 
 void toggleDayNight() {
@@ -473,30 +496,11 @@ void displayWords() {
 }
 
 void displayBigDigits() {
-  int localMode; //1 for numbers, 2 for happy birthday
-
-  if (isBirthday) { //If its a birthday, flash the happy birthday message every 5 seconds between
-    if (millis() - digitPrevSecond > 5000) {
-
-      localMode = 2; //Happy birthday
-    } else {
-      localMode = 1; //Big Digits
-      digitPrevSecond = millis();
-    }
-  } else localMode = 1; //Big Digits
-
-  switch (localMode) {
-    case 1: //Digits
-      parseTimeAndDisplayDigits();
-      blinkCursor();
-      break;
-    case 2: //Happy birthday
-      displayBirthday();
-      break;
-  }
-
+  parseTimeAndDisplayDigits();
+  blinkCursor();
 }
 
+// Display the heart animation
 float brightness = NIGHT;
 bool secretFadeUp = true;
 float SECRET_BLINK_INT = 50.0;
@@ -523,7 +527,7 @@ void displaySecretWord() {
 
   for (i = 0; i < 11; i++) {
     for (j = 0; j < 11; j++) {
-      if (OBJECTS[0][i][j]) { //Hardcoded for the first object, as there is only 1
+      if (OBJECTS[specialDateSelector][i][j]) { //Hardcoded for the first object, as there is only 1
         matrix.drawPixel(j, i, fC(255 * brightness, 0.0 , 0.0));
       }
     }
@@ -841,6 +845,41 @@ void updateSeed() {
     if (theMinute % 5 == 0 && theSecond == 0) { //If we land on a fifth minute, reset the seed
       seed = 0;
     } else seed++; //else add one to the seed
+  }
+}
+
+// Returns true if today's date is in the list of birth month/days
+bool isTodayABirthday() {
+  for (int i = 0; i < NUM_BIRTHDAYS; i++) {
+    if (BIRTH_MONTH[i] == theMonth) {
+      if (BIRTH_DAY[i] == theDay) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Returns the index of the special date that today is, if it is one. If not, returns -1
+int isTodayASpecialDate() {
+  for (int i = 0; i < NUM_SPECIAL_DATES; i++) {
+    if (SPECIAL_DATE_MONTHS[i] == theMonth) {
+      if (SPECIAL_DATE_DAYS[i] == theDay) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+void checkSpecialDatesAndChangeModeOnce() {
+  if (!modeChangedToday) {
+    if (isTodayABirthday()) {
+      mode = BIRTHDAY_MODE;
+    } else if (isTodayASpecialDate() != -1) {
+      mode = SECRET_WORD_MODE;
+      specialDateSelector = isTodayASpecialDate();
+    }
   }
 }
 // ----- WORD FUNCTIONS -- Pushes out info for the words/phrases ------
